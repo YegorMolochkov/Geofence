@@ -1,15 +1,22 @@
 package com.example.yegor.geofence;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlacePicker;
@@ -28,13 +35,32 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
 
     @BindView(R.id.activity_main)
     RelativeLayout mainView;
+    @BindView(R.id.distance_input)
+    EditText distanceInput;
     private GeofenceLocationListener mListener;
+    private LocationManager mLocationManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
+        distanceInput.setText(String.valueOf(LocationUtils.getRadius(this)));
+        distanceInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    try {
+                        int radius = Integer.parseInt(distanceInput.getText().toString());
+                        LocationUtils.setRadius(MainActivity.this, radius);
+                        startToTrackLocation(mListener);
+                    } catch (NumberFormatException e) {
+                        distanceInput.setText(String.valueOf(LocationUtils.getRadius(MainActivity.this)));
+                    }
+                }
+                return false;
+            }
+        });
     }
 
     @Override
@@ -45,6 +71,18 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
         } else {
             mListener = new GeofenceLocationListener(this, this);
             startToTrackLocation(mListener);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mLocationManager != null) {
+            try {
+                mLocationManager.removeUpdates(mListener);
+            } catch (SecurityException e) {
+                Log.d(getString(R.string.app_name), e.getLocalizedMessage());
+            }
         }
     }
 
@@ -85,20 +123,26 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case PERMISSION_REQUEST: {
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.length > 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
                     startToTrackLocation(mListener);
+                } else if (grantResults.length > 1 && grantResults[0] == PackageManager.PERMISSION_DENIED && grantResults[1] == PackageManager.PERMISSION_DENIED) {
+                    finish();
                 }
             }
         }
     }
 
     private void startToTrackLocation(GeofenceLocationListener listener) {
-        LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (!checkPermission()) {
             requestPermission();
             return;
         }
-        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_UPDATE_TIME, MIN_UPDATE_DISTANCE, listener);
+        mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        Location lastLocation = LocationUtils.getLastKnownLocation(mLocationManager);
+        if (lastLocation != null) {
+            listener.onLocationChanged(lastLocation);
+        }
+        mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_UPDATE_TIME, MIN_UPDATE_DISTANCE, listener);
     }
 
     @Override
@@ -108,10 +152,12 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
     }
 
     private boolean checkPermission() {
-        return ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        boolean fine = ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        boolean coarse = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        return fine && coarse;
     }
 
     private void requestPermission() {
-        ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSION_REQUEST);
+        ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION,}, PERMISSION_REQUEST);
     }
 }

@@ -3,7 +3,10 @@ package com.example.yegor.geofence;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.location.Location;
+import android.location.LocationManager;
 import android.preference.PreferenceManager;
+
+import java.util.List;
 
 /**
  * Utils for location calculations
@@ -12,6 +15,7 @@ class LocationUtils {
 
     private static final String LATITUDE_KEY = "LATITUDE_KEY";
     private static final String LONGITUDE_KEY = "LONGITUDE_KEY";
+    private static final String RADIUS_KEY = "RADIUS_KEY";
 
     /**
      * calculates distance from current location to center of area
@@ -35,6 +39,26 @@ class LocationUtils {
      */
     static boolean isInsideArea(float distance, float radius) {
         return Float.compare(radius - distance, 0) >= 0;
+    }
+
+    /**
+     * @param locationManager location manager
+     * @return best of last known locations
+     * @throws SecurityException
+     */
+    static Location getLastKnownLocation(LocationManager locationManager) throws SecurityException {
+        List<String> providers = locationManager.getProviders(true);
+        Location bestLocation = null;
+        for (String provider : providers) {
+            Location l = locationManager.getLastKnownLocation(provider);
+            if (l == null) {
+                continue;
+            }
+            if (bestLocation == null || l.getAccuracy() < bestLocation.getAccuracy()) {
+                bestLocation = l;
+            }
+        }
+        return bestLocation;
     }
 
     static boolean isValuesInitiated(Context context) {
@@ -62,5 +86,15 @@ class LocationUtils {
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
         String result = preferences.getString(LONGITUDE_KEY, "-1");
         return Double.parseDouble(result);
+    }
+
+    static void setRadius(Context context, int radius) {
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
+        preferences.edit().putInt(RADIUS_KEY, radius).apply();
+    }
+
+    static int getRadius(Context context) {
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
+        return preferences.getInt(RADIUS_KEY, 100);
     }
 }

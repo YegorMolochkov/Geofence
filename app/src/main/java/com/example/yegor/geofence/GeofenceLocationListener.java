@@ -1,22 +1,27 @@
 package com.example.yegor.geofence;
 
 import android.content.Context;
-import android.content.SharedPreferences;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.location.Location;
 import android.location.LocationListener;
 import android.os.Bundle;
+import android.support.v7.app.AlertDialog;
 
 /**
  * Location changes listener
  */
- class GeofenceLocationListener implements LocationListener {
+class GeofenceLocationListener implements LocationListener {
 
+    private Context mContext;
     private LocationChangeListener mListener;
     private double mCenterLatitude;
     private double mCenterLongitude;
     private Boolean mCurrentStatus;
+    private AlertDialog dialog;
 
     GeofenceLocationListener(Context context, LocationChangeListener listener) {
+        mContext = context;
         mCenterLatitude = LocationUtils.getCenterLatitude(context);
         mCenterLongitude = LocationUtils.getCenterLongitude(context);
         mListener = listener;
@@ -25,7 +30,7 @@ import android.os.Bundle;
     @Override
     public void onLocationChanged(Location location) {
         float currentDistance = LocationUtils.getDistance(mCenterLatitude, mCenterLongitude, location);
-        boolean newStatus = LocationUtils.isInsideArea(currentDistance, 100);
+        boolean newStatus = LocationUtils.isInsideArea(currentDistance, LocationUtils.getRadius(mContext));
         if (mCurrentStatus == null || newStatus != mCurrentStatus) {
             mCurrentStatus = newStatus;
             mListener.onStatusChanged(newStatus);
@@ -38,10 +43,25 @@ import android.os.Bundle;
 
     @Override
     public void onProviderEnabled(String provider) {
+        if (dialog != null && dialog.isShowing()) {
+            dialog.hide();
+        }
     }
 
     @Override
     public void onProviderDisabled(String provider) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(mContext);
+        builder.setMessage("To continue, please turn on location!")
+                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        Intent viewIntent = new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                        mContext.startActivity(viewIntent);
+                    }
+                })
+                .setCancelable(false);
+        dialog = builder.create();
+        dialog.show();
     }
 
     interface LocationChangeListener {
