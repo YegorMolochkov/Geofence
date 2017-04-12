@@ -22,15 +22,15 @@ class GeofenceLocationListener implements LocationListener {
 
     GeofenceLocationListener(Context context, LocationChangeListener listener) {
         mContext = context;
-        mCenterLatitude = LocationUtils.getCenterLatitude(context);
-        mCenterLongitude = LocationUtils.getCenterLongitude(context);
+        mCenterLatitude = PreferencesUtils.getCenterLatitude(context);
+        mCenterLongitude = PreferencesUtils.getCenterLongitude(context);
         mListener = listener;
     }
 
     @Override
     public void onLocationChanged(Location location) {
         float currentDistance = LocationUtils.getDistance(mCenterLatitude, mCenterLongitude, location);
-        boolean newStatus = LocationUtils.isInsideArea(currentDistance, LocationUtils.getRadius(mContext));
+        boolean newStatus = LocationUtils.isInsideArea(mContext, currentDistance, PreferencesUtils.getRadius(mContext));
         if (mCurrentStatus == null || newStatus != mCurrentStatus) {
             mCurrentStatus = newStatus;
             mListener.onStatusChanged(newStatus);

@@ -1,12 +1,18 @@
 package com.example.yegor.geofence;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -37,6 +43,8 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
     RelativeLayout mainView;
     @BindView(R.id.distance_input)
     EditText distanceInput;
+    @BindView(R.id.wifi_input)
+    EditText wiFiInput;
     private GeofenceLocationListener mListener;
     private LocationManager mLocationManager;
 
@@ -45,28 +53,80 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
-        distanceInput.setText(String.valueOf(LocationUtils.getRadius(this)));
+        initInputs();
+        setUpReceiver();
+    }
+
+    private void initInputs() {
+        distanceInput.setText(String.valueOf(PreferencesUtils.getRadius(this)));
         distanceInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 if (actionId == EditorInfo.IME_ACTION_DONE) {
                     try {
                         int radius = Integer.parseInt(distanceInput.getText().toString());
-                        LocationUtils.setRadius(MainActivity.this, radius);
+                        PreferencesUtils.setRadius(MainActivity.this, radius);
                         startToTrackLocation(mListener);
                     } catch (NumberFormatException e) {
-                        distanceInput.setText(String.valueOf(LocationUtils.getRadius(MainActivity.this)));
+                        distanceInput.setText(String.valueOf(PreferencesUtils.getRadius(MainActivity.this)));
                     }
+                }
+                return false;
+            }
+        });
+        wiFiInput.setText(PreferencesUtils.getDesiredWiFiName(this));
+        wiFiInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    String wifi = "\"" + wiFiInput.getText().toString() + "\"";
+                    PreferencesUtils.setDesiredWiFiName(MainActivity.this, wifi);
+                    startToTrackLocation(mListener);
                 }
                 return false;
             }
         });
     }
 
+    private void checkWiFI() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetwork = connectivityManager.getActiveNetworkInfo();
+        if (activeNetwork != null && activeNetwork.getType() == ConnectivityManager.TYPE_WIFI) {
+            setWiFiName();
+        }
+    }
+
+    private void setUpReceiver() {
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                NetworkInfo info = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
+                if (info != null && info.isConnected()) {
+                    setWiFiName();
+                } else {
+                    PreferencesUtils.setConnected(context, false);
+                }
+            }
+        }, intentFilter);
+    }
+
+    private void setWiFiName() {
+        WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+        WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+        PreferencesUtils.setConnected(this, true);
+        PreferencesUtils.setWiFiName(this, wifiInfo.getSSID());
+        if (mListener != null) {
+            startToTrackLocation(mListener);
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
-        if (!LocationUtils.isValuesInitiated(this)) {
+        checkWiFI();
+        if (!PreferencesUtils.isValuesInitiated(this)) {
             showPicker();
         } else {
             mListener = new GeofenceLocationListener(this, this);
@@ -91,7 +151,7 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
         try {
             showPlacePicker();
         } catch (Exception e) {
-            showManualInput();
+            Log.d(getString(R.string.app_name), e.getLocalizedMessage());
         }
     }
 
@@ -101,18 +161,14 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
         startActivityForResult(intent, PLACE_PICKER_REQUEST);
     }
 
-    private void showManualInput() {
-        //TODO
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == PLACE_PICKER_REQUEST) {
             if (resultCode == RESULT_OK) {
                 Place place = PlacePicker.getPlace(this, data);
                 LatLng location = place.getLatLng();
-                LocationUtils.setCenterLatitude(this, location.latitude);
-                LocationUtils.setCenterLongitude(this, location.longitude);
+                PreferencesUtils.setCenterLatitude(this, location.latitude);
+                PreferencesUtils.setCenterLongitude(this, location.longitude);
                 mListener = new GeofenceLocationListener(this, this);
                 startToTrackLocation(mListener);
             }
