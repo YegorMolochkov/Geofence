@@ -18,11 +18,9 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.RelativeLayout;
-import android.widget.TextView;
 
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlacePicker;
@@ -31,6 +29,7 @@ import com.google.android.gms.maps.model.LatLng;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+import butterknife.OnEditorAction;
 
 public class MainActivity extends AppCompatActivity implements GeofenceLocationListener.LocationChangeListener {
 
@@ -47,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
     EditText wiFiInput;
     private GeofenceLocationListener mListener;
     private LocationManager mLocationManager;
+    private BroadcastReceiver mReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,49 +57,33 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
         setUpReceiver();
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(mReceiver);
+    }
+
     private void initInputs() {
         distanceInput.setText(String.valueOf(PreferencesUtils.getRadius(this)));
-        distanceInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    try {
-                        int radius = Integer.parseInt(distanceInput.getText().toString());
-                        PreferencesUtils.setRadius(MainActivity.this, radius);
-                        startToTrackLocation(mListener);
-                    } catch (NumberFormatException e) {
-                        distanceInput.setText(String.valueOf(PreferencesUtils.getRadius(MainActivity.this)));
-                    }
-                }
-                return false;
-            }
-        });
         wiFiInput.setText(PreferencesUtils.getDesiredWiFiName(this));
-        wiFiInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    String wifi = "\"" + wiFiInput.getText().toString() + "\"";
-                    PreferencesUtils.setDesiredWiFiName(MainActivity.this, wifi);
-                    startToTrackLocation(mListener);
-                }
-                return false;
-            }
-        });
     }
 
     private void checkWiFI() {
         ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo activeNetwork = connectivityManager.getActiveNetworkInfo();
-        if (activeNetwork != null && activeNetwork.getType() == ConnectivityManager.TYPE_WIFI) {
-            setWiFiName();
+        if (activeNetwork != null) {
+            if (activeNetwork.getType() == ConnectivityManager.TYPE_WIFI) {
+                setWiFiName();
+            } else {
+                PreferencesUtils.setConnected(this, false);
+            }
         }
     }
 
     private void setUpReceiver() {
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
-        registerReceiver(new BroadcastReceiver() {
+        mReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 NetworkInfo info = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
@@ -109,14 +93,17 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
                     PreferencesUtils.setConnected(context, false);
                 }
             }
-        }, intentFilter);
+        };
+        registerReceiver(mReceiver, intentFilter);
     }
 
     private void setWiFiName() {
         WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
         WifiInfo wifiInfo = wifiManager.getConnectionInfo();
         PreferencesUtils.setConnected(this, true);
-        PreferencesUtils.setWiFiName(this, wifiInfo.getSSID());
+        String ssid = wifiInfo.getSSID();
+        String name = ssid.substring(1, ssid.length() - 1);
+        PreferencesUtils.setWiFiName(this, name);
         if (mListener != null) {
             startToTrackLocation(mListener);
         }
@@ -154,6 +141,31 @@ public class MainActivity extends AppCompatActivity implements GeofenceLocationL
             Log.d(getString(R.string.app_name), e.getLocalizedMessage());
         }
     }
+
+    @OnEditorAction(R.id.distance_input)
+    boolean onDistanceAction(int actionId) {
+        if (actionId == EditorInfo.IME_ACTION_DONE) {
+            try {
+                int radius = Integer.parseInt(distanceInput.getText().toString());
+                PreferencesUtils.setRadius(MainActivity.this, radius);
+                startToTrackLocation(mListener);
+            } catch (NumberFormatException e) {
+                distanceInput.setText(String.valueOf(PreferencesUtils.getRadius(MainActivity.this)));
+            }
+        }
+        return false;
+    }
+
+    @OnEditorAction(R.id.wifi_input)
+    boolean onWiFIAction(int actionId) {
+        if (actionId == EditorInfo.IME_ACTION_DONE) {
+            String wifi = wiFiInput.getText().toString();
+            PreferencesUtils.setDesiredWiFiName(MainActivity.this, wifi);
+            startToTrackLocation(mListener);
+        }
+        return false;
+    }
+
 
     private void showPlacePicker() throws Exception {
         PlacePicker.IntentBuilder builder = new PlacePicker.IntentBuilder();
